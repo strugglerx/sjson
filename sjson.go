@@ -20,7 +20,7 @@ func New(v interface{}) *Json {
 var replace = []string{`\\`, `\`, `\"`, `"`, `"[`, "[", `"{`, "{", `]",`, "],", `]"}`, "]}", `}",`, "},", `}"}`, "}}"}
 
 var regexps = []*regexp.Regexp{
-	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\d\-])`),      // { [
+	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),      // { [
 	regexp.MustCompile(`([\"\]\}\d\-][\]\}])\"([,\,\}]*)`), // }]
 	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),      // [] {}
 	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"
