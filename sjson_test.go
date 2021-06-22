@@ -29,6 +29,7 @@ var check1 = map[string]interface{}{
 	"key7": "[[\"中文\", \"english\", \"dog\", \"man\"],[\"中文\", \"english\", \"dog\", \"man\"]]",
 	"key8": "[[1,2,3,4,14,5.3],[1,2,3,4,14,5.3]]",
 	"key9": "{\"url\":{\"url\":\"https://xxxxxxxx.com.cn/pic_2323.1-5-2png\", \"desc\": \"换行\\n换行\"}}",
+	"key10": "[\"https://xxxxxxxx.com.cn/pic_2323.1-5-2png\",\"https://xxxxxxxx.com.cn/pic_2323.1-5-2png\",\"https://xxxxxxxx.com.cn/pic_2323.1-5-2png\"]",
 }
 
 func TestJson_StringWithJsonMustToString(t *testing.T) {
