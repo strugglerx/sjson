@@ -23,8 +23,17 @@ var regexps = []*regexp.Regexp{
 	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),      // { [
 	regexp.MustCompile(`([\"\]\}\d\-][\]\}])\"([,\,\}]*)`), // }]
 	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),      // [] {}
-	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"
-	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",
+	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"  b:[\:\"\}\]]
+	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",  a: [\:\"\{\[]
+	regexp.MustCompile(`\\(\\)`),                           // \\
+}
+
+var safetyRegexps = []*regexp.Regexp{
+	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),      // { [
+	regexp.MustCompile(`([\"\]\}\d\-][\]\}])\"([,\,\}]*)`), // }]
+	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),      // [] {}
+	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"  b:[\:\"\}\]]
+	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",  a: [\:\"\{\[]
 	regexp.MustCompile(`\\(\\)`),                           // \\
 }
 
@@ -34,6 +43,11 @@ func (j *Json) ReplaceAllString(regexps []*regexp.Regexp, src string) string {
 		src = v.ReplaceAllString(src, substitution)
 	}
 	return src
+}
+
+func (j *Json) SearchStringWithJsons(src string) []string {
+	regexp := regexp.MustCompile(`:(\"[\{\[].*?[\}\]]\")`)
+	return regexp.FindAllString(src,-1)
 }
 
 func (j *Json) MustToJsonByte() []byte {
@@ -65,6 +79,18 @@ func (j *Json) MustToJsonString() string {
 func (j *Json) StringWithJsonMustRegexToString() string {
 	return j.ReplaceAllString(regexps, j.MustToJsonString())
 }
+
+func (j *Json) StringWithJsonSafetyMustRegexToString() string {
+	src := j.MustToJsonString()
+	for _,v := range j.SearchStringWithJsons(src){
+		src = strings.Replace(src,v, j.ReplaceAllString(safetyRegexps,v),-1)
+	}
+	//
+	return src
+}
+
+
+
 
 //Mysql 如果含有json的数据 可以纠正转义符号转换成正常的结构
 //
@@ -114,4 +140,11 @@ func StringWithJsonRegexToString(v interface{}) string {
 		V: v,
 	}
 	return j.StringWithJsonMustRegexToString()
+}
+
+func StringWithJsonSafetyRegexToString(v interface{}) string {
+	j := &Json{
+		V: v,
+	}
+	return j.StringWithJsonSafetyMustRegexToString()
 }

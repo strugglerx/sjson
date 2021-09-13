@@ -66,9 +66,12 @@ func main() {
     fmt.Println("eg1:",sjson.StringWithJsonToString(check))
     fmt.Println("eg2:", sjson.StringWithJsonToString(check1))
     
-    //suggest
     fmt.Println("eg1:", sjson.StringWithJsonRegexToString(check))
     fmt.Println("eg2:", sjson.StringWithJsonRegexToString(check1))
+    
+    //suggest 
+    fmt.Println("eg1:", sjson.StringWithJsonSafetyRegexToString(check))
+    fmt.Println("eg2:", sjson.StringWithJsonSafetyRegexToString(check1))
 }
 
 ```
