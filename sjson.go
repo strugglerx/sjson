@@ -23,17 +23,8 @@ var regexps = []*regexp.Regexp{
 	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),      // { [
 	regexp.MustCompile(`([\"\]\}\d\-][\]\}])\"([,\,\}]*)`), // }]
 	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),      // [] {}
-	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"  b:[\:\"\}\]]
-	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",  a: [\:\"\{\[]
-	regexp.MustCompile(`\\(\\)`),                           // \\
-}
-
-var safetyRegexps = []*regexp.Regexp{
-	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),      // { [
-	regexp.MustCompile(`([\"\]\}\d\-][\]\}])\"([,\,\}]*)`), // }]
-	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),      // [] {}
-	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"  b:[\:\"\}\]]
-	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",  a: [\:\"\{\[]
+	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"
+	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",
 	regexp.MustCompile(`\\(\\)`),                           // \\
 }
 
@@ -83,7 +74,7 @@ func (j *Json) StringWithJsonMustRegexToString() string {
 func (j *Json) StringWithJsonSafetyMustRegexToString() string {
 	src := j.MustToJsonString()
 	for _,v := range j.SearchStringWithJsons(src){
-		src = strings.Replace(src,v, j.ReplaceAllString(safetyRegexps,v),-1)
+		src = strings.Replace(src,v, j.ReplaceAllString(regexps,v),-1)
 	}
 	//
 	return src
