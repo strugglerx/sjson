@@ -28,6 +28,12 @@ var regexps = []*regexp.Regexp{
 	regexp.MustCompile(`\\(\\)`),                           // \\
 }
 
+var regexpsSafety = []*regexp.Regexp{
+	regexp.MustCompile(`\\(\"[\w]+)\\(\"\:)`), //key
+	regexp.MustCompile(`(:)"([\[\{].*?[\]\}])"`), //{} []
+	regexp.MustCompile(`\\(".*?)\\("[,"\]\}]?)`), // \"
+}
+
 func (j *Json) ReplaceAllString(regexps []*regexp.Regexp, src string) string {
 	substitution := `$1$2$3`
 	for _, v := range regexps {
@@ -37,8 +43,8 @@ func (j *Json) ReplaceAllString(regexps []*regexp.Regexp, src string) string {
 }
 
 func (j *Json) SearchStringWithJsons(src string) []string {
-	regexp := regexp.MustCompile(`:(\"[\{\[].*?[\}\]]\")`)
-	return regexp.FindAllString(src,-1)
+	reg := regexp.MustCompile(`:(\"[\{\[].*?[\}\]]\")`)
+	return reg.FindAllString(src,-1)
 }
 
 func (j *Json) MustToJsonByte() []byte {
@@ -74,9 +80,8 @@ func (j *Json) StringWithJsonMustRegexToString() string {
 func (j *Json) StringWithJsonSafetyMustRegexToString() string {
 	src := j.MustToJsonString()
 	for _,v := range j.SearchStringWithJsons(src){
-		src = strings.Replace(src,v, j.ReplaceAllString(regexps,v),-1)
+		src = strings.Replace(src,v, j.ReplaceAllString(regexpsSafety,v),-1)
 	}
-	//
 	return src
 }
 
