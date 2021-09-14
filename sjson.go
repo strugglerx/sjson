@@ -30,8 +30,11 @@ var regexps = []*regexp.Regexp{
 
 var regexpsSafety = []*regexp.Regexp{
 	regexp.MustCompile(`\\(\"[\w]+)\\(\"\:)`), //key
-	regexp.MustCompile(`(:)"([\[\{].*?[\]\}])"`), //{} []
+	regexp.MustCompile(`(:)"([\[\{][\d\{\["\\].*?[\]\}])"`), //{} []
+	regexp.MustCompile(`(:)"([\[\{][\]\}])"`), //{} []
 	regexp.MustCompile(`\\(".*?)\\("[,"\]\}]?)`), // \"
+	regexp.MustCompile(`\\(\\)`),                           // \\
+	//regexp.MustCompile(`\\(".*?)\\("[,"\]\}]?)`), // \"
 }
 
 func (j *Json) ReplaceAllString(regexps []*regexp.Regexp, src string) string {
