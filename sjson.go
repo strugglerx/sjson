@@ -32,8 +32,10 @@ var regexpsSafety = []*regexp.Regexp{
 	regexp.MustCompile(`\\(\"[\w]+)\\(\"\:)`), //key
 	regexp.MustCompile(`(:)"([\[\{][\d\{\["\\].*?[\]\}])"`), //{} []
 	regexp.MustCompile(`(:)"([\[\{][\]\}])"`), //{} []
-	regexp.MustCompile(`\\(".*?)\\("[,"\]\}]?)`), // \"
-	regexp.MustCompile(`\\(\\)`),                           // \\
+	regexp.MustCompile(`\\(")`), // \"
+	regexp.MustCompile(`\\(\\)`),  // \\
+	//regexp.MustCompile(`([^\\])\\(")`), // \"
+
 	//regexp.MustCompile(`\\(".*?)\\("[,"\]\}]?)`), // \"
 }
 
