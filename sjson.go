@@ -79,16 +79,31 @@ func (j *Json) StringWithJsonMustRegexToString() string {
 	return j.ReplaceAllString(regexps, j.MustToJsonString())
 }
 
+func (j *Json) RemoveRepeatedElement(arr []string) (newArr []string) {
+	newArr = make([]string, 0)
+	for i := 0; i < len(arr); i++ {
+		repeat := false
+		for j := i + 1; j < len(arr); j++ {
+			if arr[i] == arr[j] {
+				repeat = true
+				break
+			}
+		}
+		if !repeat {
+			newArr = append(newArr, arr[i])
+		}
+	}
+	return
+}
+
 func (j *Json) StringWithJsonSafetyMustRegexToString() string {
 	src := j.MustToJsonString()
-	for _,v := range j.SearchStringWithJsons(src){
-		src = strings.Replace(src,v, j.ReplaceAllString(regexpsSafety,v),-1)
+	preElement := j.RemoveRepeatedElement(j.SearchStringWithJsons(src))
+	for _,v := range preElement{
+		 src = strings.ReplaceAll(src,v, j.ReplaceAllString(regexpsSafety,v))
 	}
 	return src
 }
-
-
-
 
 //Mysql 如果含有json的数据 可以纠正转义符号转换成正常的结构
 //
