@@ -3,6 +3,7 @@ package sjson
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 )
@@ -20,20 +21,20 @@ func New(v interface{}) *Json {
 var replace = []string{`\\`, `\`, `\"`, `"`, `"[`, "[", `"{`, "{", `]",`, "],", `]"}`, "]}", `}",`, "},", `}"}`, "}}"}
 
 var regexps = []*regexp.Regexp{
-	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),      // { [
+	regexp.MustCompile(`(:)"([\[\{])([\\"\"\{\[\d\-])`),    // { [
 	regexp.MustCompile(`([\"\]\}\d\-][\]\}])\"([,\,\}]*)`), // }]
-	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),      // [] {}
+	regexp.MustCompile(`(:)"([\[\{])([\]\}])"`),            // [] {}
 	regexp.MustCompile(`([,:\[ \{])\\(")`),                 // ,\"
 	regexp.MustCompile(`\\(")([:,\]\}])`),                  // \",
 	regexp.MustCompile(`\\(\\)`),                           // \\
 }
 
 var regexpsSafety = []*regexp.Regexp{
-	regexp.MustCompile(`\\(\"[\w]+)\\(\"\:)`), //key
+	regexp.MustCompile(`\\(\"[\w]+)\\(\"\:)`),               //key
 	regexp.MustCompile(`(:)"([\[\{][\d\{\["\\].*?[\]\}])"`), //{} []
-	regexp.MustCompile(`(:)"([\[\{][\]\}])"`), //{} []
-	regexp.MustCompile(`\\(")`), // \"
-	regexp.MustCompile(`\\(\\)`),  // \\
+	regexp.MustCompile(`(:)"([\[\{][\]\}])"`),               //{} []
+	regexp.MustCompile(`\\(")`),                             // \"
+	regexp.MustCompile(`\\(\\)`),                            // \\
 }
 
 func (j *Json) ReplaceAllString(regexps []*regexp.Regexp, src string) string {
@@ -46,7 +47,7 @@ func (j *Json) ReplaceAllString(regexps []*regexp.Regexp, src string) string {
 
 func (j *Json) SearchStringWithJsons(src string) []string {
 	reg := regexp.MustCompile(`:(\"[\{\[].*?[\}\]]\")`)
-	return reg.FindAllString(src,-1)
+	return reg.FindAllString(src, -1)
 }
 
 func (j *Json) MustToJsonByte() []byte {
@@ -63,6 +64,19 @@ func (j *Json) MustToJsonString() string {
 	jsonEncoder.SetEscapeHTML(false)
 	jsonEncoder.Encode(j.V)
 	return buffer.String()
+}
+
+func (j *Json) Struct(v interface{}) error {
+	var err error
+	switch vv := j.V.(type) {
+	case string:
+		err = json.Unmarshal([]byte(vv), &v)
+	case []byte:
+		err = json.Unmarshal(vv, &v)
+	default:
+		err = errors.New("type error")
+	}
+	return err
 }
 
 //`(:)"([\[\{])([\\"\"\{\d\-]) => $1$2$3 `       // { [
@@ -99,8 +113,8 @@ func (j *Json) RemoveRepeatedElement(arr []string) (newArr []string) {
 func (j *Json) StringWithJsonSafetyMustRegexToString() string {
 	src := j.MustToJsonString()
 	preElement := j.RemoveRepeatedElement(j.SearchStringWithJsons(src))
-	for _,v := range preElement{
-		 src = strings.ReplaceAll(src,v, j.ReplaceAllString(regexpsSafety,v))
+	for _, v := range preElement {
+		src = strings.ReplaceAll(src, v, j.ReplaceAllString(regexpsSafety, v))
 	}
 	return src
 }
@@ -128,36 +142,21 @@ func (j *Json) StringWithJsonMustToString() string {
 }
 
 func ToJsonByte(v interface{}) []byte {
-	j := &Json{
-		V: v,
-	}
-	return j.MustToJsonByte()
+	return New(v).MustToJsonByte()
 }
 
 func ToJsonString(v interface{}) string {
-	j := &Json{
-		V: v,
-	}
-	return j.MustToJsonString()
+	return New(v).MustToJsonString()
 }
 
 func StringWithJsonToString(v interface{}) string {
-	j := &Json{
-		V: v,
-	}
-	return j.StringWithJsonMustToString()
+	return New(v).StringWithJsonMustToString()
 }
 
 func StringWithJsonRegexToString(v interface{}) string {
-	j := &Json{
-		V: v,
-	}
-	return j.StringWithJsonMustRegexToString()
+	return New(v).StringWithJsonMustRegexToString()
 }
 
 func StringWithJsonSafetyRegexToString(v interface{}) string {
-	j := &Json{
-		V: v,
-	}
-	return j.StringWithJsonSafetyMustRegexToString()
+	return New(v).StringWithJsonSafetyMustRegexToString()
 }
