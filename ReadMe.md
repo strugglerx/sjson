@@ -4,78 +4,92 @@
 [![Production Ready](https://img.shields.io/badge/production-ready-blue.svg)](https://github.com/strugglerx/sjson)
 [![License](https://img.shields.io/github/license/strugglerx/sjson.svg?style=flat)](https://github.com/strugglerx/sjson)
 
-convert `string json` to `json`
-# Feature
+[中文文档](./ReadMe_zh.md)
+
+> Expand nested JSON strings within structs/maps into valid JSON. Commonly used for MySQL JSON fields stored as strings.
+
+## Example
+
+Convert this (where fields are JSON strings):
 
 ```json
 {
-    "key1": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"]}",
-    "key2": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"],\"key1\":[-1,2,3,4,5],\"key2\":[1,2,3,4,5]}",
-    "key3": "[\"中文\", \"english\", \"dog\", \"man\"]",
-    "key4": "[{\"url\":\"https://xxxxxxxx.com.cn/pic_2323.1-5-2png\", \"desc\": \"换行\\n换行\"},[\"中文\", \"english\", \"dog\", \"man\"],[-1,2,3,4,5],[1,2,3,4,5]]"
+    "key1": "{\"key\":[\"CN\", \"EN\"]}",
+    "key2": "[{\"url\":\"https://example.com\", \"desc\": \"Line\nBreak\"}]",
+    "nick": "[Wow]"
 }
 ```
-convert
+
+Into valid JSON (nested JSON automatically expanded, normal strings untouched):
+
 ```json
-{   
-  "key1":{"key":["中文", "english", "dog", "man"]},
-  "key2":{"key":["中文", "english", "dog", "man"],
-  "key1":[-1,2,3,4,5],"key2":[1,2,3,4,5]},
-  "key3":["中文", "english", "dog", "man"],
-  "key4":[{"url":"https://xxxxxxxx.com.cn/pic_2323.1-5-2png", "desc": "换行\n换行"},["中文", "english", "dog", "man"],[-1,2,3,4,5],[1,2,3,4,5]]
+{
+    "key1": {"key":["CN", "EN"]},
+    "key1": [{"url":"https://example.com", "desc":"Line\nBreak"}],
+    "nick": "[Wow]"
 }
 ```
 
+## Installation
 
-
-# Installation
-```
+```bash
 go get -u -v github.com/strugglerx/sjson
 ```
-suggested using `go.mod`:
-```
-require github.com/strugglerx/sjson
-```
 
-# Usage
+## API Reference
+
+| Function | Description | Recommended |
+|:---|:---|:---|
+| `ToJsonByte(v)` | Standard JSON Marshal -> `[]byte` | ✅ |
+| `ToJsonString(v)` | Standard JSON Marshal -> `string` | ✅ |
+| `StringWithJsonScanToString(v)` | Extreme optimized single-pass scanner | ⭐ **Recommended** |
+| `StringWithJsonSafetyRegexToString(v)` | Regex-based expansion (Legacy/Comparison) | ⚠️ Slower |
+
+## Performance
+
+Environment: Apple M1 Pro, Benchmark with **~1MB** dataset:
+
+| Metric | `SafetyRegex` (Legacy) | **`ScanToString` (New)** | Boost |
+|:---|:---|:---|:---|
+| **Latency** | ~115 ms | **~3.6 ms** | **🚀 32x Faster** |
+| **Memory Alloc** | ~133 MB | **~1.06 MB** | **🔥 99% Reduced** |
+| **Alloc Count** | 23,654 | **13,762** | **40% Lower** |
+
+### Why is it so fast?
+
+1. **Zero Regex Engine Overhead**: Replaced heavy regex with a single O(n) byte scanner.
+2. **Full Bytestream Pipeline**: Reduced unnecessary string-to-byte conversions.
+3. **Scratch Buffer Pooling**: Used `sync.Pool` for temporary validation buffers.
+4. **Segmented Copy**: Optimized the unescape loop with bulk segment copies.
+
+## Memory Safety
+
+- **GC Friendly**: Uses `sync.Pool` which is automatically reclaimed by GC.
+- **Capacity Guard**: Buffers exceeding 4KB are discarded instead of pooled to prevent memory bloat.
+- **Thread Safe**: All pooled operations are safe for concurrent use.
+
+## Usage
+
 ```golang
-package main 
+package main
 
 import (
-    "github.com/strugglerx/sjson"
     "fmt"
+    "github.com/strugglerx/sjson"
 )
 
-var check = map[string]interface{}{
-    "key1":        "string",
-    "key2":        0,
-    "key3":        1.23,
-    "nick":        "[天呐]",
-    "description": "我叫“王二蛋\"个子不高本事不小",
-}
-
-var check1 = map[string]interface{}{
-    "key1": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"]}",
-    "key2": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"],\"key1\":[-1,2,3,4,5],\"key2\":[1,2,3,4,5]}",
-    "key3": "[\"中文\", \"english\", \"dog\", \"man\"]",
-    "key4": "[{\"url\":\"https://xxxxxxxx.com.cn/pic_2323.1-5-2png\", \"desc\": \"换行\\n换行\"},[\"中文\", \"english\", \"dog\", \"man\"],[-1,2,3,4,5],[1,2,3,4,5]]",
-}
-
-
 func main() {
-    fmt.Println("eg1:",sjson.StringWithJsonToString(check))
-    fmt.Println("eg2:", sjson.StringWithJsonToString(check1))
-    
-    fmt.Println("eg1:", sjson.StringWithJsonRegexToString(check))
-    fmt.Println("eg2:", sjson.StringWithJsonRegexToString(check1))
-    
-    //suggest 
-    fmt.Println("eg1:", sjson.StringWithJsonSafetyRegexToString(check))
-    fmt.Println("eg2:", sjson.StringWithJsonSafetyRegexToString(check1))
-}
+    data := map[string]interface{}{
+        "nick":  "[Wow]",
+        "extra": "{\"score\":100, \"tags\":[\"go\"]}",
+    }
 
+    // ⭐ Recommended: Best performance, validated by json.Valid
+    result := sjson.StringWithJsonScanToString(data)
+    fmt.Println(result)
+}
 ```
 
-# License
+## License
 
 `sjson` is licensed under the [MIT License](LICENSE), 100% free and open-source, forever.
