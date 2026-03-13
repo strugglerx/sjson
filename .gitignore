@@ -1,1 +1,17 @@
 .idea
+.DS_Store
+
+# Build outputs
+/bin/
+/cli
+/http-server
+
+# WASM example artifacts
+/examples/wasm/sjson.wasm
+/examples/wasm/wasm_exec.js
+/examples/js-wrapper/sjson.wasm
+/examples/js-wrapper/wasm_exec.js
+/examples/js-wrapper/loader.js
+
+# Local fuzz crashers
+/testdata/fuzz/

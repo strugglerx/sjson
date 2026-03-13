@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sjson wasm demo</title>
+  <style>
+    :root {
+      --bg: #f6f2e8;
+      --panel: rgba(255, 252, 245, 0.88);
+      --panel-strong: #fffaf0;
+      --ink: #1e2b24;
+      --muted: #5f6d62;
+      --line: rgba(37, 52, 44, 0.14);
+      --accent: #c96d42;
+      --accent-soft: #f4ddc6;
+      --green: #2f6a4f;
+      --shadow: 0 18px 40px rgba(51, 44, 28, 0.12);
+      --mono: "SFMono-Regular", "Menlo", "Consolas", monospace;
+      --display: "Avenir Next", "Trebuchet MS", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--display);
+      background:
+        radial-gradient(circle at top left, rgba(201, 109, 66, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(47, 106, 79, 0.16), transparent 26%),
+        linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 32px auto 48px;
+    }
+
+    .hero {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--green);
+      background: rgba(47, 106, 79, 0.1);
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+
+    .lede {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.6;
+    }
+
+    .callouts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .pill {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.66);
+    }
+
+    .pill strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--green);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 20px 12px;
+    }
+
+    .card-header h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .card-note {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .card-body {
+      padding: 0 20px 20px;
+    }
+
+    textarea,
+    pre {
+      margin: 0;
+      width: 100%;
+      min-height: 280px;
+      padding: 18px;
+      border: 1px solid rgba(37, 52, 44, 0.09);
+      border-radius: 18px;
+      background: var(--panel-strong);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: auto;
+    }
+
+    textarea {
+      resize: vertical;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 20px;
+      font: inherit;
+      font-weight: 700;
+      color: #fffaf3;
+      background: linear-gradient(135deg, #be5f35 0%, #d97e4d 100%);
+      box-shadow: 0 14px 30px rgba(201, 109, 66, 0.26);
+      cursor: pointer;
+      transition: transform 140ms ease, box-shadow 140ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 18px 34px rgba(201, 109, 66, 0.32);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      transform: none;
+      color: rgba(255, 250, 243, 0.78);
+      background: linear-gradient(135deg, #b8aaa0 0%, #c9bbb1 100%);
+      box-shadow: none;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(244, 221, 198, 0.5);
+      border: 1px solid rgba(201, 109, 66, 0.16);
+    }
+
+    .stat-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .stat-value {
+      display: block;
+      margin-top: 6px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .raw-card {
+      margin-top: 18px;
+    }
+
+    .mini {
+      min-height: 190px;
+    }
+
+    .error {
+      color: #8d1d13;
+      background: rgba(224, 109, 82, 0.12);
+      border-color: rgba(224, 109, 82, 0.22);
+    }
+
+    @media (max-width: 940px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stat-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <span class="eyebrow">sjson wasm demo</span>
+      <h1>See what expands and what stays a string.</h1>
+      <p class="lede">
+        This page makes the result more obvious: <code>profile</code> and <code>items</code> expand into real JSON,
+        while <code>note</code> still stays a normal string because it only looks like JSON.
+      </p>
+      <div class="callouts">
+        <div class="pill">
+          <strong>Will expand</strong>
+          <span><code>profile</code> is a JSON object string.</span>
+        </div>
+        <div class="pill">
+          <strong>Will expand</strong>
+          <span><code>items</code> is a JSON array string.</span>
+        </div>
+        <div class="pill">
+          <strong>Will stay</strong>
+          <span><code>note</code> is not valid JSON.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <div class="card-header">
+          <h2>Input JSON</h2>
+          <span class="card-note">Paste any JSON value here.</span>
+        </div>
+        <div class="card-body">
+          <textarea id="input">{
+  "profile": "{\"name\":\"alice\",\"tags\":[\"go\",\"json\"]}",
+  "items": "[{\"id\":1,\"ok\":true},{\"id\":2,\"ok\":false}]",
+  "note": "[not real json]"
+}</textarea>
+          <div class="actions">
+            <button id="run">Expand With WASM</button>
+            <span class="status" id="status">Ready.</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="stack">
+        <article class="card">
+          <div class="card-header">
+            <h2>Expanded Object</h2>
+            <span class="card-note">Best view for frontend debugging.</span>
+          </div>
+          <div class="card-body">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-label">profile</span>
+                <span class="stat-value" id="profileStat">object</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">items</span>
+                <span class="stat-value" id="itemsStat">array</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">note</span>
+                <span class="stat-value" id="noteStat">string</span>
+              </div>
+            </div>
+            <pre id="parsed"></pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <h2>Formatted Result String</h2>
+            <span class="card-note">Pretty view of the JSON string returned by <code>result</code>.</span>
+          </div>
+          <div class="card-body">
+            <pre id="resultString" class="mini"></pre>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <article class="card raw-card">
+      <div class="card-header">
+        <h2>Raw WASM Return Payload</h2>
+        <span class="card-note">Useful if you want to inspect the raw bridge response.</span>
+      </div>
+      <div class="card-body">
+        <pre id="output" class="mini"></pre>
+      </div>
+    </article>
+  </main>
+
+  <script src="./loader.js?v=20260313"></script>
+  <script>
+    const output = document.getElementById("output");
+    const parsed = document.getElementById("parsed");
+    const resultString = document.getElementById("resultString");
+    const status = document.getElementById("status");
+    const runButton = document.getElementById("run");
+
+    runButton.disabled = true;
+
+    function setStatus(message, isError = false) {
+      status.textContent = message;
+      status.style.color = isError ? "#8d1d13" : "";
+    }
+
+    function describeShape(value) {
+      if (Array.isArray(value)) return `array(${value.length})`;
+      if (value && typeof value === "object") return "object";
+      return typeof value;
+    }
+
+    function updateStats(data) {
+      document.getElementById("profileStat").textContent = describeShape(data?.profile);
+      document.getElementById("itemsStat").textContent = describeShape(data?.items);
+      document.getElementById("noteStat").textContent = describeShape(data?.note);
+    }
+
+    function renderResult(result) {
+      output.classList.remove("error");
+      parsed.classList.remove("error");
+      resultString.classList.remove("error");
+
+      output.textContent = JSON.stringify(result, null, 2);
+      resultString.textContent = formatJSONString(result.result);
+      parsed.textContent = JSON.stringify(result.parsed ?? null, null, 2);
+      updateStats(result.parsed ?? {});
+    }
+
+    function renderError(message) {
+      output.classList.add("error");
+      parsed.classList.add("error");
+      resultString.classList.add("error");
+
+      output.textContent = message;
+      parsed.textContent = "No parsed output.";
+      resultString.textContent = "No string result.";
+      updateStats({});
+    }
+
+    function formatJSONString(text) {
+      if (!text) return "";
+      try {
+        return JSON.stringify(JSON.parse(text), null, 2);
+      } catch (_) {
+        return text;
+      }
+    }
+
+    async function boot() {
+      try {
+        await window.initSJSONWasm({
+          wasmExecPath: "./wasm_exec.js?v=20260313",
+          wasmPath: "./sjson.wasm?v=20260313",
+        });
+        runButton.disabled = false;
+        setStatus("WASM runtime loaded.");
+        runButton.click();
+      } catch (err) {
+        renderError(String(err));
+        setStatus(`Failed to load WASM runtime: ${String(err)}`, true);
+      }
+    }
+
+    runButton.addEventListener("click", () => {
+      const input = document.getElementById("input").value;
+      if (!window.SJSON || typeof window.SJSON.expand !== "function") {
+        renderError("window.SJSON.expand is not ready yet.");
+        setStatus("WASM function not ready.", true);
+        return;
+      }
+
+      const result = window.SJSON.expand(input);
+      if (result.error) {
+        renderError(result.error);
+        setStatus("Expansion failed.", true);
+        return;
+      }
+
+      renderResult(result);
+      setStatus("Expanded successfully.");
+    });
+
+    boot();
+  </script>
+</body>
+</html>

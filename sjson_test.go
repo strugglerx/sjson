@@ -3,6 +3,8 @@ package sjson
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +99,310 @@ func TestJson_Struct(t *testing.T) {
 	t.Log(err, vs)
 }
 
+func TestScannerPreservesPlainStrings(t *testing.T) {
+	input := map[string]interface{}{
+		"plainArrayLike":  "[天呐]",
+		"plainObjectLike": "{not-json}",
+		"realNested":      "{\"ok\":true,\"list\":[1,2,3]}",
+	}
+
+	got := StringWithJsonScanToString(input)
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+
+	if decoded["plainArrayLike"] != "[天呐]" {
+		t.Fatalf("plainArrayLike changed unexpectedly: %#v", decoded["plainArrayLike"])
+	}
+	if decoded["plainObjectLike"] != "{not-json}" {
+		t.Fatalf("plainObjectLike changed unexpectedly: %#v", decoded["plainObjectLike"])
+	}
+
+	realNested, ok := decoded["realNested"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("realNested was not expanded into object: %#v", decoded["realNested"])
+	}
+	if realNested["ok"] != true {
+		t.Fatalf("unexpected realNested content: %#v", realNested)
+	}
+}
+
+func TestErrorAPIsAndMustPanic(t *testing.T) {
+	unsupported := map[string]interface{}{
+		"bad": func() {},
+	}
+
+	if _, err := ToJsonByteE(unsupported); err == nil {
+		t.Fatal("ToJsonByteE should return error for unsupported type")
+	}
+	if _, err := ToJsonStringE(unsupported); err == nil {
+		t.Fatal("ToJsonStringE should return error for unsupported type")
+	}
+	if _, err := StringWithJsonScanToStringE(unsupported); err == nil {
+		t.Fatal("StringWithJsonScanToStringE should return error for unsupported type")
+	}
+	if _, err := StringWithJsonScanToBytesE(unsupported); err == nil {
+		t.Fatal("StringWithJsonScanToBytesE should return error for unsupported type")
+	}
+
+	assertPanicContains(t, "ToJsonByte", "unsupported type", func() {
+		ToJsonByte(unsupported)
+	})
+	assertPanicContains(t, "ToJsonString", "unsupported type", func() {
+		ToJsonString(unsupported)
+	})
+	assertPanicContains(t, "StringWithJsonScanToString", "unsupported type", func() {
+		StringWithJsonScanToString(unsupported)
+	})
+}
+
+func assertPanicContains(t *testing.T, label, want string, fn func()) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("%s should panic", label)
+		}
+		if !strings.Contains(fmt.Sprint(r), want) {
+			t.Fatalf("%s panic mismatch: got %v, want substring %q", label, r, want)
+		}
+	}()
+	fn()
+}
+
+func TestScannerComplexCases(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  map[string]interface{}
+		verify func(t *testing.T, decoded map[string]interface{})
+	}{
+		{
+			name: "escaped nested object with quotes and slashes",
+			input: map[string]interface{}{
+				"payload": "{\"meta\":{\"title\":\"A \\\"quote\\\" here\",\"path\":\"C:\\\\temp\\\\demo\"},\"ok\":true}",
+			},
+			verify: func(t *testing.T, decoded map[string]interface{}) {
+				t.Helper()
+				payload, ok := decoded["payload"].(map[string]interface{})
+				if !ok {
+					t.Fatalf("payload not expanded: %#v", decoded["payload"])
+				}
+				meta, ok := payload["meta"].(map[string]interface{})
+				if !ok {
+					t.Fatalf("meta missing: %#v", payload["meta"])
+				}
+				if meta["title"] != `A "quote" here` {
+					t.Fatalf("unexpected title: %#v", meta["title"])
+				}
+				if meta["path"] != `C:\temp\demo` {
+					t.Fatalf("unexpected path: %#v", meta["path"])
+				}
+			},
+		},
+		{
+			name: "nested array with mixed objects",
+			input: map[string]interface{}{
+				"payload": "[{\"name\":\"alice\",\"attrs\":{\"level\":3}},{\"name\":\"bob\",\"tags\":[\"x\",\"y\"]}]",
+			},
+			verify: func(t *testing.T, decoded map[string]interface{}) {
+				t.Helper()
+				payload, ok := decoded["payload"].([]interface{})
+				if !ok || len(payload) != 2 {
+					t.Fatalf("payload not expanded into array: %#v", decoded["payload"])
+				}
+				first, ok := payload[0].(map[string]interface{})
+				if !ok || first["name"] != "alice" {
+					t.Fatalf("unexpected first element: %#v", payload[0])
+				}
+				second, ok := payload[1].(map[string]interface{})
+				if !ok || second["name"] != "bob" {
+					t.Fatalf("unexpected second element: %#v", payload[1])
+				}
+			},
+		},
+		{
+			name: "plain strings that look close to json remain strings",
+			input: map[string]interface{}{
+				"bad1": "{missing",
+				"bad2": "[1,2,3",
+				"bad3": "{key:value}",
+				"bad4": `[not "real" json]`,
+			},
+			verify: func(t *testing.T, decoded map[string]interface{}) {
+				t.Helper()
+				for key, want := range map[string]interface{}{
+					"bad1": "{missing",
+					"bad2": "[1,2,3",
+					"bad3": "{key:value}",
+					"bad4": `[not "real" json]`,
+				} {
+					if decoded[key] != want {
+						t.Fatalf("%s changed unexpectedly: got %#v want %#v", key, decoded[key], want)
+					}
+				}
+			},
+		},
+		{
+			name: "empty containers should expand",
+			input: map[string]interface{}{
+				"emptyArray":  "[]",
+				"emptyObject": "{}",
+			},
+			verify: func(t *testing.T, decoded map[string]interface{}) {
+				t.Helper()
+				if got, ok := decoded["emptyArray"].([]interface{}); !ok || len(got) != 0 {
+					t.Fatalf("emptyArray mismatch: %#v", decoded["emptyArray"])
+				}
+				if got, ok := decoded["emptyObject"].(map[string]interface{}); !ok || len(got) != 0 {
+					t.Fatalf("emptyObject mismatch: %#v", decoded["emptyObject"])
+				}
+			},
+		},
+		{
+			name: "unicode and escaped newline stay correct",
+			input: map[string]interface{}{
+				"payload": "{\"message\":\"你好\\n世界\",\"items\":[\"雪\",\"山\",\"海\"]}",
+			},
+			verify: func(t *testing.T, decoded map[string]interface{}) {
+				t.Helper()
+				payload, ok := decoded["payload"].(map[string]interface{})
+				if !ok {
+					t.Fatalf("payload not expanded: %#v", decoded["payload"])
+				}
+				if payload["message"] != "你好\n世界" {
+					t.Fatalf("unexpected message: %#v", payload["message"])
+				}
+				items, ok := payload["items"].([]interface{})
+				if !ok || len(items) != 3 {
+					t.Fatalf("unexpected items: %#v", payload["items"])
+				}
+			},
+		},
+		{
+			name: "double encoded json only expands one level",
+			input: map[string]interface{}{
+				"payload": "\"{\\\"deep\\\":true}\"",
+			},
+			verify: func(t *testing.T, decoded map[string]interface{}) {
+				t.Helper()
+				if decoded["payload"] != `"{"deep":true}"` && decoded["payload"] != `"{\"deep\":true}"` {
+					t.Fatalf("unexpected payload: %#v", decoded["payload"])
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := StringWithJsonScanToString(tc.input)
+			assertValidJSON(t, tc.name, out)
+
+			var decoded map[string]interface{}
+			if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+				t.Fatalf("unmarshal result: %v", err)
+			}
+			tc.verify(t, decoded)
+		})
+	}
+}
+
+func FuzzStringWithJsonScanToString(f *testing.F) {
+	seeds := []string{
+		``,
+		`[]`,
+		`{}`,
+		`[天呐]`,
+		`{"a":1}`,
+		`[1,2,3]`,
+		`{\"a\":1}`,
+		`{"meta":{"title":"A \"quote\""}}`,
+		`"[{\"nested\":true}]"`,
+		`{missing`,
+		`[1,2,3`,
+		`{key:value}`,
+		`你好\n世界`,
+		`C:\\temp\\demo`,
+	}
+	for _, seed := range seeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, input string) {
+		data := map[string]interface{}{
+			"payload": input,
+			"mirror":  input + "_suffix",
+		}
+
+		out := StringWithJsonScanToString(data)
+
+		var decoded map[string]interface{}
+		if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+			t.Fatalf("invalid json: %v\ninput=%q\nout=%s", err, input, out)
+		}
+
+		wantMirror := jsonRoundTripString(t, input+"_suffix")
+		if decoded["mirror"] != wantMirror {
+			t.Fatalf("mirror changed unexpectedly: input=%q got=%#v want=%#v", input, decoded["mirror"], wantMirror)
+		}
+
+		wantPayload := expectedPayloadAfterScan(t, input)
+		if !reflect.DeepEqual(decoded["payload"], wantPayload) {
+			t.Fatalf("payload changed unexpectedly: input=%q got=%#v want=%#v", input, decoded["payload"], wantPayload)
+		}
+	})
+}
+
+func jsonRoundTripString(t *testing.T, s string) string {
+	t.Helper()
+
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal string: %v", err)
+	}
+
+	var out string
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal string: %v", err)
+	}
+	return out
+}
+
+func expectedPayloadAfterScan(t *testing.T, input string) interface{} {
+	t.Helper()
+
+	normalized := jsonRoundTripString(t, input)
+	buf, err := encodeIntoBuffer(input)
+	if err != nil {
+		t.Fatalf("encode input: %v", err)
+	}
+	defer putBuffer(buf)
+
+	encoded := trimTrailingNewline(buf.Bytes())
+	if len(encoded) < 2 {
+		return normalized
+	}
+
+	candidate := encoded[1 : len(encoded)-1]
+	expanded, ok := expandCandidateJSON(candidate, nil)
+	if !ok {
+		return normalized
+	}
+
+	var v interface{}
+	if err := json.Unmarshal(expanded, &v); err != nil {
+		return normalized
+	}
+
+	switch v.(type) {
+	case map[string]interface{}, []interface{}:
+		return v
+	default:
+		return normalized
+	}
+}
+
 // ===================== Benchmark：正则 vs 单次扫描 =====================
 
 func BenchmarkSafetyRegex(b *testing.B) {
@@ -108,6 +414,12 @@ func BenchmarkSafetyRegex(b *testing.B) {
 func BenchmarkScanner(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		StringWithJsonScanToString(check1)
+	}
+}
+
+func BenchmarkScannerBytes(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		StringWithJsonScanToBytes(check1)
 	}
 }
 
@@ -124,6 +436,14 @@ func BenchmarkScanner_Large(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		StringWithJsonScanToString(list)
+	}
+}
+
+func BenchmarkScannerBytes_Large(b *testing.B) {
+	list := buildLargeList()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		StringWithJsonScanToBytes(list)
 	}
 }
 
@@ -157,5 +477,13 @@ func BenchmarkScanner_1MB(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		StringWithJsonScanToString(list)
+	}
+}
+
+func BenchmarkScannerBytes_1MB(b *testing.B) {
+	list := build1MBList()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		StringWithJsonScanToBytes(list)
 	}
 }

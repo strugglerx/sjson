@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sjson js-wrapper demo</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --ink: #1f2630;
+      --muted: #5b6572;
+      --line: #d8dee7;
+      --accent: #0d6c9f;
+      --accent-2: #0e8f7e;
+      --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+      --display: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--display);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(13, 108, 159, 0.15), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(14, 143, 126, 0.14), transparent 25%),
+        linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
+    }
+
+    .container {
+      width: min(1160px, calc(100% - 32px));
+      margin: 28px auto 40px;
+    }
+
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4.4vw, 44px);
+      letter-spacing: -0.03em;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    textarea,
+    pre {
+      width: 100%;
+      min-height: 220px;
+      margin: 0;
+      border-radius: 12px;
+      border: 1px solid #dce2eb;
+      background: #fdfefe;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #a5b0bd;
+      cursor: not-allowed;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 920px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="hero">
+      <h1>sjson js-wrapper demo</h1>
+      <p class="sub">This demo uses <code>wrapper.js</code> as a stable frontend API instead of calling <code>window.SJSON.expand</code> directly.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Input</h2>
+        <textarea id="input">{
+  "profile": "{\"name\":\"alice\",\"tags\":[\"go\",\"json\"]}",
+  "items": "[{\"id\":1,\"ok\":true},{\"id\":2,\"ok\":false}]",
+  "note": "[not real json]"
+}</textarea>
+        <div class="actions">
+          <button id="run">Expand With Wrapper</button>
+          <span class="status" id="status">Loading WASM runtime...</span>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Parsed Output</h2>
+        <pre id="parsed"></pre>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Result String</h2>
+        <pre id="result"></pre>
+      </article>
+
+      <article class="card">
+        <h2>Raw Return Payload</h2>
+        <pre id="raw"></pre>
+      </article>
+    </section>
+  </main>
+
+  <script src="./loader.js?v=20260313"></script>
+  <script type="module">
+    import { createSJSONClient } from "./wrapper.js";
+
+    const runButton = document.getElementById("run");
+    const status = document.getElementById("status");
+    const parsedEl = document.getElementById("parsed");
+    const resultEl = document.getElementById("result");
+    const rawEl = document.getElementById("raw");
+    const inputEl = document.getElementById("input");
+
+    let client = null;
+    runButton.disabled = true;
+
+    function setStatus(text, isError = false) {
+      status.textContent = text;
+      status.style.color = isError ? "#b42318" : "";
+    }
+
+    function pretty(v) {
+      return JSON.stringify(v, null, 2);
+    }
+
+    async function bootstrap() {
+      try {
+        client = await createSJSONClient();
+        runButton.disabled = false;
+        setStatus("Runtime ready.");
+        runButton.click();
+      } catch (err) {
+        setStatus(`Failed to initialize: ${String(err)}`, true);
+      }
+    }
+
+    runButton.addEventListener("click", () => {
+      if (!client) {
+        setStatus("Client is not initialized.", true);
+        return;
+      }
+      try {
+        const out = client.expand(inputEl.value);
+        parsedEl.textContent = pretty(out.parsed);
+        resultEl.textContent = pretty(JSON.parse(out.result));
+        rawEl.textContent = pretty(out);
+        setStatus("Expanded successfully.");
+      } catch (err) {
+        parsedEl.textContent = "No parsed output.";
+        resultEl.textContent = "No string output.";
+        rawEl.textContent = String(err);
+        setStatus(`Expansion failed: ${String(err)}`, true);
+      }
+    });
+
+    bootstrap();
+  </script>
+</body>
+</html>
