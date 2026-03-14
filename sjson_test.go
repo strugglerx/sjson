@@ -464,6 +464,36 @@ func build1MBList() []map[string]interface{} {
 	return list
 }
 
+func build10MBList() []map[string]interface{} {
+	// 在 1MB 数据集基础上放大约 10 倍，模拟更极端的大对象场景
+	list := make([]map[string]interface{}, 0, 5000)
+	for k := 0; k < 2500; k++ {
+		middle := map[string]interface{}{
+			"a": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"]}",
+			"b": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"],\"key1\":[-1,2,3,4,5],\"key2\":[1,2,3,4,5]}",
+			"i": fmt.Sprintf("{\"url\":{\"url\":\"https://xxxxxxxx.com.cn/pic-%d.png\", \"desc\": \"10MB benchmark payload\"}}", k),
+		}
+		list = append(list, check1)
+		list = append(list, middle)
+	}
+	return list
+}
+
+func build100MBList() []map[string]interface{} {
+	// 在 1MB 数据集基础上放大约 100 倍，用于极端大对象 benchmark
+	list := make([]map[string]interface{}, 0, 50000)
+	for k := 0; k < 25000; k++ {
+		middle := map[string]interface{}{
+			"a": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"]}",
+			"b": "{\"key\":[\"中文\", \"english\", \"dog\", \"man\"],\"key1\":[-1,2,3,4,5],\"key2\":[1,2,3,4,5]}",
+			"i": fmt.Sprintf("{\"url\":{\"url\":\"https://xxxxxxxx.com.cn/pic-%d.png\", \"desc\": \"100MB benchmark payload\"}}", k),
+		}
+		list = append(list, check1)
+		list = append(list, middle)
+	}
+	return list
+}
+
 func BenchmarkSafetyRegex_1MB(b *testing.B) {
 	list := build1MBList()
 	b.ResetTimer()
@@ -477,6 +507,38 @@ func BenchmarkScanner_1MB(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		StringWithJsonScanToString(list)
+	}
+}
+
+func BenchmarkSafetyRegex_10MB(b *testing.B) {
+	list := build10MBList()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		StringWithJsonSafetyRegexToString(list)
+	}
+}
+
+func BenchmarkScanner_10MB(b *testing.B) {
+	list := build10MBList()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		StringWithJsonScanToString(list)
+	}
+}
+
+func BenchmarkScanner_100MB(b *testing.B) {
+	list := build100MBList()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		StringWithJsonScanToString(list)
+	}
+}
+
+func BenchmarkSafetyRegex_100MB(b *testing.B) {
+	list := build100MBList()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		StringWithJsonSafetyRegexToString(list)
 	}
 }
 

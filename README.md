@@ -144,11 +144,15 @@ Latest benchmark snapshot:
 |:---|:---|:---|:---|
 | `SafetyRegex_1MB` | `~115.7 ms/op` | `~133.7 MB/op` | `23656 allocs/op` |
 | `Scanner_1MB` | `~3.62 ms/op` | `~1.57 MB/op` | `13766 allocs/op` |
+| `SafetyRegex_10MB` | `~8.91 s/op` | `~12.25 GB/op` | `237446 allocs/op` |
+| `Scanner_10MB` | `~35.8 ms/op` | `~20.2 MB/op` | `137543 allocs/op` |
+| `Scanner_100MB` | `~363 ms/op` | `~308.6 MB/op` | `1375078 allocs/op` |
 
 That is roughly:
 
 - `~32x` faster than the legacy regex path
 - about `98%+` less memory than the regex path
+- still practical on very large payloads when using the scanner path
 
 ## Why It Is Fast
 
@@ -156,6 +160,15 @@ That is roughly:
 - `sync.Pool` reuse for temporary buffers
 - Segment-based copying instead of byte-by-byte output writes on hot paths
 - Validation only when a candidate string actually looks like a JSON container
+
+## Large Payload Conclusion
+
+- For normal backend responses and internal tools, the scanner path is already fast enough to use with confidence.
+- On `10MB` payloads, the scanner path stayed in the `~35ms` range, while the legacy regex path moved into multi-second territory.
+- On `100MB` payloads, the scanner path still completed in sub-second time on the test machine.
+- The legacy regex path became impractical at `100MB` scale, so the scanner path should be treated as the real production path.
+
+In short: if your workload includes large or messy JSON payloads, `StringWithJsonScanToString` is the path you should use by default.
 
 ## Safety And Testing
 
