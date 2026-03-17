@@ -109,6 +109,58 @@ func scanEncodedJSONBytes(src []byte) []byte {
 	return out
 }
 
+func scanEncodedJSONBytesDepth(src []byte, depth int) []byte {
+	scratch := scratchPool.Get().([]byte)
+	scratch = scratch[:0]
+	defer func() {
+		putScratch(scratch)
+	}()
+
+	out := make([]byte, 0, len(src))
+	i, n := 0, len(src)
+	segmentStart := 0
+	for i < n {
+		if src[i] == ':' || src[i] == '[' || src[i] == ',' {
+			quotePos, contentPos, ok := findJSONStringStart(src, i)
+			if !ok {
+				i++
+				continue
+			}
+			next := src[contentPos]
+			if next == '{' || next == '[' || next == '\\' {
+				if end := findStringEndBytes(src, contentPos); end > 0 {
+					if expanded, ok := expandCandidateJSON(src[contentPos:end], scratch[:0]); ok {
+						if depth != 0 {
+							nextDepth := depth - 1
+							if depth < 0 {
+								nextDepth = -1
+							}
+
+							if bytes.IndexByte(expanded, '{') >= 0 || bytes.IndexByte(expanded, '[') >= 0 {
+								expanded = scanEncodedJSONBytesDepth(expanded, nextDepth)
+							}
+
+							out = append(out, src[segmentStart:quotePos]...)
+							out = append(out, expanded...)
+							i = end + 1
+							segmentStart = i
+							continue
+						}
+						out = append(out, src[segmentStart:quotePos]...)
+						out = append(out, expanded...)
+						i = end + 1
+						segmentStart = i
+						continue
+					}
+				}
+			}
+		}
+		i++
+	}
+	out = append(out, src[segmentStart:]...)
+	return out
+}
+
 func scanEncodedJSON(src []byte) string {
 	sb := sbPool.Get().(*strings.Builder)
 	sb.Reset()
@@ -145,6 +197,65 @@ func scanEncodedJSON(src []byte) string {
 	return sb.String()
 }
 
+func scanEncodedJSONDepth(src []byte, depth int) string {
+	sb := sbPool.Get().(*strings.Builder)
+	sb.Reset()
+	sb.Grow(len(src))
+	defer putBuilder(sb)
+
+	scratch := scratchPool.Get().([]byte)
+	scratch = scratch[:0]
+	defer func() {
+		putScratch(scratch)
+	}()
+
+	i, n := 0, len(src)
+	segmentStart := 0
+	for i < n {
+		if src[i] == ':' || src[i] == '[' || src[i] == ',' {
+			quotePos, contentPos, ok := findJSONStringStart(src, i)
+			if !ok {
+				i++
+				continue
+			}
+			next := src[contentPos]
+			if next == '{' || next == '[' || next == '\\' {
+				if end := findStringEndBytes(src, contentPos); end > 0 {
+					if expanded, ok := expandCandidateJSON(src[contentPos:end], scratch[:0]); ok {
+						if depth != 0 {
+							nextDepth := depth - 1
+							if depth < 0 {
+								nextDepth = -1
+							}
+
+							expandedStr := string(expanded)
+
+							if bytes.IndexByte(expanded, '{') >= 0 || bytes.IndexByte(expanded, '[') >= 0 {
+								expandedStr = scanEncodedJSONDepth(expanded, nextDepth)
+							}
+
+							sb.Write(src[segmentStart:quotePos])
+							sb.WriteString(expandedStr)
+
+							i = end + 1
+							segmentStart = i
+							continue
+						}
+						sb.Write(src[segmentStart:quotePos])
+						sb.Write(expanded)
+						i = end + 1
+						segmentStart = i
+						continue
+					}
+				}
+			}
+		}
+		i++
+	}
+	sb.Write(src[segmentStart:])
+	return sb.String()
+}
+
 func expandCandidateJSON(src, scratch []byte) ([]byte, bool) {
 	if !looksLikeJSONContainer(src) {
 		return scratch, false
@@ -159,6 +270,21 @@ func expandCandidateJSON(src, scratch []byte) ([]byte, bool) {
 		return scratch, false
 	}
 	return scratch, json.Valid(scratch)
+}
+
+func findJSONStringStart(src []byte, delimPos int) (quotePos int, contentPos int, ok bool) {
+	j := delimPos + 1
+	for j < len(src) && isJSONWhitespace(src[j]) {
+		j++
+	}
+	if j+1 >= len(src) || src[j] != '"' {
+		return 0, 0, false
+	}
+	return j, j + 1, true
+}
+
+func isJSONWhitespace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
 
 func looksLikeJSONContainer(src []byte) bool {
@@ -390,4 +516,56 @@ func StringWithJsonScanToBytesE(v interface{}) ([]byte, error) {
 	defer putBuffer(buf)
 
 	return scanEncodedJSONBytes(trimTrailingNewline(buf.Bytes())), nil
+}
+
+// StringWithJsonScanDepthToString 支持指定递归层级的解码。
+// depth: 解码深度，为 0 时不进行子层级解码（等同于 StringWithJsonScanToString），
+// 大于 0 时解开对应层级，如果设为 -1，则表示无限递归解码。
+// 警告：开启多层或无限层递归解码时，会有递归调用的额外开销。在层级深或数据巨大的场景下，会导致堆栈分配增加并可能引起性能下降，甚至引发 OOM 或堆栈溢出，请务必谨慎使用并在已知数据结构层级范围内进行限制。
+func StringWithJsonScanDepthToString(v interface{}, depth int) string {
+	buf, err := encodeIntoBuffer(v)
+	if err != nil {
+		panic(fmt.Sprintf("sjson: encode json: %v", err))
+	}
+	defer putBuffer(buf)
+
+	return scanEncodedJSONDepth(trimTrailingNewline(buf.Bytes()), depth)
+}
+
+// StringWithJsonScanDepthToBytes 支持指定递归层级的解码。
+// 行为和性能影响同 StringWithJsonScanDepthToString。
+// 警告：同 StringWithJsonScanDepthToString，无限递归可能导致性能瓶颈及堆栈溢出。
+// StringWithJsonScanDepthToBytes 支持指定递归层级的解码。
+// 行为和性能影响同 StringWithJsonScanDepthToString。
+// 警告：同 StringWithJsonScanDepthToString，无限递归可能导致性能瓶颈及堆栈溢出。
+func StringWithJsonScanDepthToBytes(v interface{}, depth int) []byte {
+	buf, err := encodeIntoBuffer(v)
+	if err != nil {
+		panic(fmt.Sprintf("sjson: encode json: %v", err))
+	}
+	defer putBuffer(buf)
+
+	return scanEncodedJSONBytesDepth(trimTrailingNewline(buf.Bytes()), depth)
+}
+
+// StringWithJsonScanDepthToStringE 支持指定递归层级的解码。
+func StringWithJsonScanDepthToStringE(v interface{}, depth int) (string, error) {
+	buf, err := encodeIntoBuffer(v)
+	if err != nil {
+		return "", err
+	}
+	defer putBuffer(buf)
+
+	return scanEncodedJSONDepth(trimTrailingNewline(buf.Bytes()), depth), nil
+}
+
+// StringWithJsonScanDepthToBytesE 支持指定递归层级的解码。
+func StringWithJsonScanDepthToBytesE(v interface{}, depth int) ([]byte, error) {
+	buf, err := encodeIntoBuffer(v)
+	if err != nil {
+		return nil, err
+	}
+	defer putBuffer(buf)
+
+	return scanEncodedJSONBytesDepth(trimTrailingNewline(buf.Bytes()), depth), nil
 }

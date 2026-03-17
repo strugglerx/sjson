@@ -10,6 +10,19 @@
 
 `sjson` 适合处理这类数据：字段本质上是 JSON，但上游却把它存成了字符串。这个包会先按 `encoding/json` 对 Go 值做标准编码，再扫描编码后的结果，把其中实际是合法 JSON 对象或数组的字符串值展开。
 
+## 深度解包能力
+
+现在 `sjson` 也支持按深度递归解包，适合处理“JSON 字符串里面又嵌了 JSON 字符串”的情况。
+
+如果某个字段长这样：`"data": "{\"inner\": \"{\\\"deep\\\": 1}\"}"`，你可以按需控制继续往下解几层：
+
+- `depth = 0`：只展开第一层 JSON 字符串
+- `depth = 1`：再往下多解一层
+- `depth = 2`：再往下多解两层
+- `depth = -1`：一直解到没有更多合法 JSON 容器为止
+
+需要特别说明的是：`depth` 是独立的新特性路径。默认扫描接口仍然走原来的高性能实现，只有你显式调用 `StringWithJsonScanDepth...` 系列接口时，才会进入递归解包逻辑。
+
 ## 默认推荐用法
 
 如果你不确定该用哪个接口，默认推荐使用 `StringWithJsonScanToString(v)`。
@@ -40,9 +53,9 @@
 
 ```json
 {
-  "profile": "{\"name\":\"alice\",\"tags\":[\"go\",\"json\"]}",
-  "events": "[{\"type\":\"login\",\"ok\":true}]",
-  "note": "[not real json]"
+	"profile": "{\"name\":\"alice\",\"tags\":[\"go\",\"json\"]}",
+	"events": "[{\"type\":\"login\",\"ok\":true}]",
+	"note": "[not real json]"
 }
 ```
 
@@ -50,9 +63,9 @@
 
 ```json
 {
-  "profile": {"name":"alice","tags":["go","json"]},
-  "events": [{"type":"login","ok":true}],
-  "note": "[not real json]"
+	"profile": { "name": "alice", "tags": ["go", "json"] },
+	"events": [{ "type": "login", "ok": true }],
+	"note": "[not real json]"
 }
 ```
 
@@ -73,17 +86,21 @@ make examples
 
 ## API 说明
 
-| 函数 | 说明 | 备注 |
-|:---|:---|:---|
-| `ToJsonByte(v)` | 标准 JSON 编码，返回 `[]byte` | Must 风格，编码失败会 panic |
-| `ToJsonByteE(v)` | 标准 JSON 编码，返回 `[]byte` | 返回 `error` |
-| `ToJsonString(v)` | 标准 JSON 编码，返回 `string` | Must 风格，编码失败会 panic |
-| `ToJsonStringE(v)` | 标准 JSON 编码，返回 `string` | 返回 `error` |
-| `StringWithJsonScanToString(v)` | 展开内嵌 JSON 字符串，返回 `string` | 默认推荐 |
-| `StringWithJsonScanToStringE(v)` | 同上，但返回 `error` | 适合不希望 panic 的调用方 |
-| `StringWithJsonScanToBytes(v)` | 展开内嵌 JSON 字符串，返回 `[]byte` | 下游本来就处理字节流时更方便 |
-| `StringWithJsonScanToBytesE(v)` | 同上，但返回 `error` | 稳定字节版接口 |
-| `StringWithJsonSafetyRegexToString(v)` | 旧版正则实现 | 更慢，主要保留用于对比 |
+| 函数                                         | 说明                                | 备注                         |
+| :------------------------------------------- | :---------------------------------- | :--------------------------- |
+| `ToJsonByte(v)`                              | 标准 JSON 编码，返回 `[]byte`       | Must 风格，编码失败会 panic  |
+| `ToJsonByteE(v)`                             | 标准 JSON 编码，返回 `[]byte`       | 返回 `error`                 |
+| `ToJsonString(v)`                            | 标准 JSON 编码，返回 `string`       | Must 风格，编码失败会 panic  |
+| `ToJsonStringE(v)`                           | 标准 JSON 编码，返回 `string`       | 返回 `error`                 |
+| `StringWithJsonScanToString(v)`              | 展开内嵌 JSON 字符串，返回 `string` | 默认推荐                     |
+| `StringWithJsonScanToStringE(v)`             | 同上，但返回 `error`                | 适合不希望 panic 的调用方    |
+| `StringWithJsonScanToBytes(v)`               | 展开内嵌 JSON 字符串，返回 `[]byte` | 下游本来就处理字节流时更方便 |
+| `StringWithJsonScanToBytesE(v)`              | 同上，但返回 `error`                | 稳定字节版接口               |
+| `StringWithJsonScanDepthToString(v, depth)`  | 按 `depth` 深度解包并返回 `string`  | `-1` 为无限递归              |
+| `StringWithJsonScanDepthToStringE(v, depth)` | 同上，返回 `error`                  | `-1` 为无限递归              |
+| `StringWithJsonScanDepthToBytes(v, depth)`   | 按 `depth` 深度解包并返回 `[]byte`  | `-1` 为无限递归              |
+| `StringWithJsonScanDepthToBytesE(v, depth)`  | 同上，返回 `error`                  | `-1` 为无限递归              |
+| `StringWithJsonSafetyRegexToString(v)`       | 旧版正则实现                        | 更慢，主要保留用于对比       |
 
 ## 使用示例
 
@@ -105,6 +122,15 @@ func main() {
 
 	out := sjson.StringWithJsonScanToString(data)
 	fmt.Println(out)
+
+	nestedData := map[string]interface{}{
+		"data": "{\"inner\": \"{\\\"deep\\\": 1}\"}",
+	}
+
+	// 支持递归解包
+	// 输出: {"data":{"inner":{"deep": 1}}}
+	outDeep := sjson.StringWithJsonScanDepthToString(nestedData, -1)
+	fmt.Println(outDeep)
 }
 ```
 
@@ -133,7 +159,8 @@ _ = b
 - 只有“字符串值本身能解析成合法 JSON 对象或数组”时，才会被展开。
 - 类似 `"[hello]"`、`"{not-json}"` 这种看起来像 JSON、但实际不是合法 JSON 的内容，会保持原字符串。
 - 判断依据是 JSON 编码后的结果，不是原始 Go 字符串的裸字节。
-- 当前行为是对最终编码结果做一层展开，不会无限递归反复解码。
+- `StringWithJsonScanToString` / `StringWithJsonScanToBytes` 默认只对最终编码结果做一层展开。
+- 如果你需要继续递归解包，请使用 `StringWithJsonScanDepth...` 系列接口。
 - 编码语义遵循 Go 标准库 `encoding/json`，包括 UTF-8 规范化等行为。
 
 ## 性能表现
@@ -142,23 +169,41 @@ _ = b
 
 - 机器：Apple M1 Pro
 - Go 模块版本：`go 1.16`
-- 数据量：约 `1MB`
+- 下表覆盖了 `1MB`、`10MB`、`100MB` 三种量级
 
 最新 benchmark 快照：
 
-| Benchmark | 耗时 | 内存 | 分配次数 |
-|:---|:---|:---|:---|
-| `SafetyRegex_1MB` | `~115.7 ms/op` | `~133.7 MB/op` | `23656 allocs/op` |
-| `Scanner_1MB` | `~3.62 ms/op` | `~1.57 MB/op` | `13766 allocs/op` |
-| `SafetyRegex_10MB` | `~8.91 s/op` | `~12.25 GB/op` | `237446 allocs/op` |
-| `Scanner_10MB` | `~35.8 ms/op` | `~20.2 MB/op` | `137543 allocs/op` |
-| `Scanner_100MB` | `~363 ms/op` | `~308.6 MB/op` | `1375078 allocs/op` |
+### 1. 处理常见大小 JSON (对比旧正则版)
+
+| Benchmark          | 耗时           | 内存           | 分配次数            |
+| :----------------- | :------------- | :------------- | :------------------ |
+| `SafetyRegex_1MB`  | `~115.7 ms/op` | `~133.7 MB/op` | `23656 allocs/op`   |
+| `Scanner_1MB`      | `~3.93 ms/op`  | `~1.53 MB/op`  | `13765 allocs/op`   |
+| `SafetyRegex_10MB` | `~8.91 s/op`   | `~12.25 GB/op` | `237446 allocs/op`  |
+| `Scanner_10MB`     | `~39.6 ms/op`  | `~20.8 MB/op`  | `137546 allocs/op`  |
+| `Scanner_100MB`    | `~376 ms/op`   | `~252.7 MB/op` | `1375061 allocs/op` |
 
 大致可以理解为：
 
 - 相比旧版正则路径，速度提升约 `32x`
 - 内存占用下降到原来的 `1%` 到 `2%`
 - 到了更大的数据量，扫描版依然有很强的可用性
+
+### 2. 深度接口说明
+
+深度解包适合“确实需要继续往下拆”的 payload，但它被刻意做成了和默认接口分开的路径：
+
+```json
+{
+	"data": "{\"inner1\": \"{\\\"inner2\\\": \\\"{\\\\\\\"inner3\\\\\\\": \\\\\\\"{\\\\\\\\\\\\\\\"deep\\\\\\\\\\\\\\\": 1}\\\\\\\"}\\\"}\"}"
+}
+```
+
+- `StringWithJsonScanDepthToString(v, 0)`：和默认扫描路径一样，只解第一层
+- `StringWithJsonScanDepthToString(v, 1)`：再往下多解一层
+- `StringWithJsonScanDepthToString(v, -1)`：一直解到嵌套链结束
+
+如果你的场景只是普通接口响应、数据库结果、日志清洗，默认非 depth 扫描路径仍然是首选。只有在你明确知道需要继续递归拆开时，再切到 depth 接口。
 
 ## 为什么快
 
@@ -172,6 +217,7 @@ _ = b
 - 对普通后端接口、内部平台和数据处理脚本来说，扫描版的性能已经足够放心使用。
 - 在 `10MB` 量级下，扫描版仍然保持在 `~35ms` 级别，而旧正则版已经进入多秒区间。
 - 在 `100MB` 量级下，扫描版在测试机器上依然能在亚秒级完成。
+- 增加 `depth` 特性后，默认扫描路径仍然保留了独立的快速实现，本地对比中没有出现明显性能回退。
 - 旧正则版在 `100MB` 量级已经不再适合作为实际生产路径，真正应该默认使用的是扫描版。
 
 可以把结论理解成一句话：

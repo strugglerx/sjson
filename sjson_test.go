@@ -51,6 +51,24 @@ func assertValidJSON(t *testing.T, label, s string) {
 	}
 }
 
+func assertJSONEqual(t *testing.T, label, got, want string) {
+	t.Helper()
+
+	var gotV interface{}
+	if err := json.Unmarshal([]byte(got), &gotV); err != nil {
+		t.Fatalf("[%s] got is invalid JSON: %v\n%s", label, err, got)
+	}
+
+	var wantV interface{}
+	if err := json.Unmarshal([]byte(want), &wantV); err != nil {
+		t.Fatalf("[%s] expected value is invalid JSON: %v\n%s", label, err, want)
+	}
+
+	if !reflect.DeepEqual(gotV, wantV) {
+		t.Fatalf("[%s] JSON mismatch.\nGot: %s\nExp: %s", label, got, want)
+	}
+}
+
 // buildLargeList 构建大数据集（用于 benchmark）
 func buildLargeList() []map[string]interface{} {
 	list := make([]map[string]interface{}, 0, 200)
@@ -548,4 +566,31 @@ func BenchmarkScannerBytes_1MB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		StringWithJsonScanToBytes(list)
 	}
+}
+
+// ---------------------------------------------------------
+// 测试 Depth 深度解析
+// ---------------------------------------------------------
+func TestDepthDecoding(t *testing.T) {
+	input := map[string]interface{}{
+		"data": `{"inner1": "{\"inner2\": \"{\\\"deep\\\": 1}\"}"}`,
+	}
+
+	out0 := StringWithJsonScanDepthToString(input, 0)
+	expected0 := `{"data":{"inner1": "{\"inner2\": \"{\\\"deep\\\": 1}\"}"}}`
+	assertJSONEqual(t, "Depth 0", out0, expected0)
+
+	out1 := StringWithJsonScanDepthToString(input, 1)
+	expected1 := `{"data":{"inner1":{"inner2": "{\"deep\": 1}"}}}`
+	assertJSONEqual(t, "Depth 1", out1, expected1)
+
+	out2 := StringWithJsonScanDepthToString(input, 2)
+	expected2 := `{"data":{"inner1":{"inner2":{"deep": 1}}}}`
+	assertJSONEqual(t, "Depth 2", out2, expected2)
+
+	outInf := StringWithJsonScanDepthToString(input, -1)
+	assertJSONEqual(t, "Depth -1", outInf, expected2)
+
+	outBytes := StringWithJsonScanDepthToBytes(input, -1)
+	assertJSONEqual(t, "Bytes Depth -1", string(outBytes), expected2)
 }
